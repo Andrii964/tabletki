@@ -254,6 +254,7 @@ cart() {
 
 checkout() {
   const dr = S.draft, ph = phById(dr.ph), items = dr.items;
+  const hasRx = items.some(i => drugById(i.id).rx);
   const goods = items.reduce((a, i) => a + priceOf(drugById(i.id), ph.id) * i.qty, 0);
   const slot = DELIVERY_SLOTS.find(s => s.id === dr.slot) || DELIVERY_SLOTS[0];
   const ship = dr.mode === 'delivery' ? slot.price : 0;
@@ -270,7 +271,7 @@ checkout() {
     </div>
 
     <h2 class="h3">Як отримати</h2>
-    <button class="radio ${dr.mode === 'pickup' ? 'on' : ''}" data-act="mode:pickup"><span class="rdot"></span><div class="grow"><div class="bss">Забрати в аптеці</div><div class="bs sec">Безкоштовно · до ${ph.close === '24:00' ? '24:00' : ph.close} сьогодні</div></div></button>
+    <button class="radio ${dr.mode === 'pickup' ? 'on' : ''}" data-act="mode:pickup"><span class="rdot"></span><div class="grow"><div class="bss">Забрати в аптеці</div><div class="bs sec">Безкоштовно · до ${ph.close === '24:00' ? '24:00' : ph.close} сьогодні${hasRx ? ' · рецепт покажете на місці' : ''}</div></div></button>
     <button class="radio ${dr.mode === 'delivery' ? 'on' : ''}" data-act="mode:delivery" ${ph.delivery ? '' : 'disabled style="opacity:.5"'}><span class="rdot"></span><div class="grow"><div class="bss">Доставка кур’єром</div><div class="bs sec">${ph.delivery ? `від ${money(39)} · ліки привезуть додому` : 'ця аптека не доставляє'}</div></div></button>
 
     ${dr.mode === 'delivery' ? `
@@ -278,6 +279,14 @@ checkout() {
       <div class="field"><input id="addr" type="text" value="${esc(dr.addr || S.profile.addr)}" placeholder="вулиця, будинок, квартира"></div></div>
       <h2 class="h3">Коли привезти</h2>
       ${DELIVERY_SLOTS.map(s => `<button class="radio ${slot.id === s.id ? 'on' : ''}" data-act="slot:${s.id}"><span class="rdot"></span><div class="grow"><div class="bss">${s.label}</div><div class="bs sec">${money(s.price)}${s.note ? ' · ' + s.note : ''}</div></div></button>`).join('')}
+      ${hasRx ? `
+        <h2 class="h3">Рецепт</h2>
+        <div class="card" style="background:var(--in100)"><div class="row top" style="gap:12px;color:var(--in600)">${ic('rx', 'i20')}<div class="bs">Кур’єр не може перевірити паперовий рецепт. Для доставки ${items.filter(i => drugById(i.id).rx).map(i => `«${drugById(i.id).name}»`).join(', ')} потрібен номер електронного рецепта — він приходить у SMS від лікаря.</div></div></div>
+        <div><label class="field-label" for="erx">Номер е-рецепта</label>
+          <div class="field ${S.erxErr ? 'bad' : ''}" id="erxField"><input id="erx" type="text" inputmode="numeric" maxlength="7" placeholder="000 000" value="${esc(S.erx || '')}" aria-describedby="erxHelp"><span class="erri">${ic('alert')}</span></div>
+          <div class="helper ${S.erxErr ? 'bad' : ''}" id="erxHelp">${S.erxErr ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить рецепт перед тим, як передати ліки кур’єру'}</div></div>
+        <div class="bs sec">Немає е-рецепта? Оберіть «Забрати в аптеці» - там приймуть і паперовий.</div>
+      ` : ''}
     ` : ''}
 
     <h2 class="h3">Контакти</h2>
@@ -328,7 +337,8 @@ order(p) {
     ${orderCard(o)}
     <div class="card" style="gap:4px"><div class="bss">${o.mode === 'delivery' ? 'Доставка' : 'Самовивіз'}</div>
       <div class="bs sec">${o.mode === 'delivery' ? `${esc(o.addr)}<br>${o.slotLabel}` : `${ph.name}<br>${ph.addr}`}</div>
-      <div class="bs sec">Телефон: ${esc(o.phone)}</div></div>
+      <div class="bs sec">Телефон: ${esc(o.phone)}</div>
+      ${o.erx ? `<div class="bs sec">Е-рецепт № ${esc(o.erx)}</div>` : ''}</div>
     ${o.step < 3 ? `<button class="btn text full" data-act="cancel:${o.num}">Скасувати замовлення</button>` : ''}
   </div>
   <div class="actionbar"><button class="btn ${o.step >= 3 ? 'primary' : 'secondary'} full" data-act="again:${o.num}">Замовити знову</button></div>` };
@@ -539,6 +549,13 @@ function afterMount(el) {
     ph.addEventListener('input', onPhoneInput);
     ph.addEventListener('blur', () => { const d = digits(ph.value); if (d.length > 3 && d.length < 12) setPhoneErr(true); if (d.length <= 3) ph.value = ''; S.profile.phone = ph.value; });
   }
+  const ex = el.querySelector('#erx');
+  if (ex) ex.addEventListener('input', e => {
+    const d = digits(e.target.value).slice(0, 6);
+    e.target.value = d.length > 3 ? d.slice(0, 3) + ' ' + d.slice(3) : d;
+    S.erx = e.target.value;
+    if (S.erxErr && d.length === 6) setErxErr(false);
+  });
   const ad = el.querySelector('#addr');
   if (ad) ad.addEventListener('input', e => { S.draft.addr = e.target.value; });
   const chat = el.querySelector('#chat');
@@ -565,6 +582,13 @@ function onPhoneInput(e) {
   e.target.value = d.length > 3 ? fmt(d) : '+380 ';
   S.profile.phone = e.target.value;
   if (S.phoneErr && d.length === 12) setPhoneErr(false);
+}
+function setErxErr(on) {
+  S.erxErr = on;
+  const f = document.getElementById('erxField'), h = document.getElementById('erxHelp');
+  if (!f) return;
+  f.classList.toggle('bad', on); h.classList.toggle('bad', on);
+  h.textContent = on ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить рецепт перед тим, як передати ліки кур’єру';
 }
 function setPhoneErr(on) {
   S.phoneErr = on;
@@ -602,7 +626,7 @@ function rxCheck(items, then) {
   const rxItem = items.map(i => drugById(i.id)).find(d => d.rx && !S.rxOk[d.id]);
   if (!rxItem) { then(); return; }
   openSheet(`<div class="circle info">${ic('rx')}</div><h2 class="h2 center">Цей препарат — за рецептом</h2>
-    <div class="body sec center">Аптека видасть «${rxItem.name}» лише за рецептом лікаря — паперовим або електронним. Візьміть його з собою, щоб не повертатися.</div>
+    <div class="body sec center">Аптека видасть «${rxItem.name}» лише за рецептом лікаря. Якщо забираєте самі - візьміть паперовий або електронний. Якщо замовляєте доставку - знадобиться номер е-рецепта з SMS.</div>
     <button class="btn primary full" data-act="rx-ok:${rxItem.id}">Рецепт є — продовжити</button><button class="btn text full" data-act="sheet-close">Скасувати</button>`);
 }
 
@@ -650,7 +674,7 @@ const ACT = {
   },
   'rx-ok': (id) => { S.rxOk[id] = true; closeSheet(); setTimeout(() => { const phId = S.pendingPh || (S.draft && S.draft.ph); ACT.pick(phId || PHARMACIES[0].id); }, 120); },
   'sheet-close': () => closeSheet(),
-  mode: (m) => { if (m === 'delivery' && !phById(S.draft.ph).delivery) return; S.draft.mode = m; rerender(); },
+  mode: (m) => { if (m === 'delivery' && !phById(S.draft.ph).delivery) return; S.draft.mode = m; S.erxErr = false; rerender(); },
   slot: (s) => { S.draft.slot = s; rerender(); },
   addkit: () => { S.addKit = S.addKit === false ? true : false; const b = document.querySelector('.check'); if (b) { b.classList.toggle('on', S.addKit !== false); b.setAttribute('aria-checked', S.addKit !== false); } },
   submit: () => {
@@ -658,6 +682,8 @@ const ACT = {
     if (d.length !== 12) { setPhoneErr(true); if (ph) { ph.focus(); if (!ph.value) ph.value = '+380 '; } return; }
     const ad = document.getElementById('addr');
     if (S.draft.mode === 'delivery' && ad && ad.value.trim().length < 5) { showToast('Вкажіть адресу доставки', { icon: 'alert' }); ad.focus(); return; }
+    const ex = document.getElementById('erx');
+    if (ex && digits(ex.value).length !== 6) { setErxErr(true); ex.focus(); ex.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     const btn = document.getElementById('okBtn'); btn.classList.add('loading'); btn.innerHTML = `${ic('loader', 'spin')} Зачекайте…`;
     setTimeout(() => {
       const dr = S.draft, phd = phById(dr.ph);
@@ -665,7 +691,8 @@ const ACT = {
       const total = dr.items.reduce((a, i) => a + priceOf(drugById(i.id), dr.ph) * i.qty, 0) + (dr.mode === 'delivery' ? slot.price : 0);
       const num = String(++S.orderSeq).replace(/(\d{2})(\d{3})/, '$1 $2');
       const o = { num, ph: dr.ph, mode: dr.mode, items: dr.items, total, step: 1, phone: S.profile.phone,
-        addr: ad ? ad.value : S.profile.addr, slotLabel: dr.mode === 'delivery' ? slot.label : '', date: 'сьогодні' };
+        addr: ad ? ad.value : S.profile.addr, slotLabel: dr.mode === 'delivery' ? slot.label : '', date: 'сьогодні',
+        erx: (ex && dr.mode === 'delivery') ? ex.value : '' };
       S.orders.push(o);
       if (S.addKit !== false) dr.items.forEach(i => {
         const k = kitItem(i.id), d2 = drugById(i.id), add = parseInt((d2.pack.match(/\d+/) || [20])[0], 10) * i.qty;
