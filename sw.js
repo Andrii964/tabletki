@@ -1,5 +1,5 @@
-/* Простий офлайн-кеш, щоб застосунок відкривався без інтернету. */
-const CACHE = 'tabletki-v1';
+/* Офлайн-кеш. Онлайн — завжди свіжі файли, офлайн — з кешу. */
+const CACHE = 'tabletki-v2';
 const FILES = ['./', './index.html', './app.css', './data.js', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -10,11 +10,11 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const own = e.request.url.startsWith(self.location.origin);
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      if (res.ok && e.request.url.startsWith(self.location.origin)) caches.open(CACHE).then(c => c.put(e.request, copy));
+    fetch(e.request).then(res => {
+      if (res.ok && own) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
   );
 });
