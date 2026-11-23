@@ -136,13 +136,14 @@ function sortOffers(list) {
 const SCREENS = {
 
 home() {
-  const act = S.orders.find(o => o.step < 3);
+  const acts = S.orders.filter(o => o.step < 3).slice().reverse();
   const rem = todayReminders();
   return { bottom: 'tab', tab: 'home', html: `${sb()}${tbLarge(`Добрий день, ${esc(S.profile.name)}`, `<button class="ib" data-act="go:profile" aria-label="Профіль">${ic('user')}</button>`)}
   <div class="content">
     <button class="search" data-act="open-search">${ic('search', 'muted')}<span class="body muted">Назва ліків або симптом</span></button>
     ${rem.length ? remCard(rem[0], true) : ''}
-    ${act ? `<div class="sect"><h2 class="h3">Активне замовлення</h2><button class="btn text m" data-act="order:${act.num}">Деталі</button></div>${orderCard(act, true)}` : ''}
+    ${acts.length ? `<div class="sect"><h2 class="h3">${acts.length > 1 ? `Активні замовлення · ${acts.length}` : 'Активне замовлення'}</h2>${acts.length === 1 ? `<button class="btn text m" data-act="order:${acts[0].num}">Деталі</button>` : `<button class="btn text m" data-act="go:orders">Усі</button>`}</div>
+    ${acts.map(o => `<button data-act="order:${o.num}" style="display:block;width:100%;padding:0;border:0;background:none;text-align:left;font:inherit;color:inherit">${orderCard(o, true)}</button>`).join('')}` : ''}
     <div class="sect"><h2 class="h3">Категорії</h2><button class="btn text m" data-act="go:catalog">Усі</button></div>
     <div class="grid">${CATEGORIES.slice(0, 4).map(catTile).join('')}</div>
     <div class="sect"><h2 class="h3">Часто купують</h2></div>
@@ -299,10 +300,11 @@ checkout() {
       ${slots().map(s => `<button class="radio ${slot.id === s.id ? 'on' : ''}" data-act="slot:${s.id}"><span class="rdot"></span><div class="grow"><div class="bss">${s.label}</div><div class="bs sec">${money(s.price)}${s.note ? ' · ' + s.note : ''}</div></div></button>`).join('')}
       ${hasRx ? `
         <h2 class="h3">Рецепт</h2>
-        <div class="card" style="background:var(--in100)"><div class="row top" style="gap:12px;color:var(--in600)">${ic('rx', 'i20')}<div class="bs">Кур’єр не може перевірити паперовий рецепт. Для доставки ${items.filter(i => drugById(i.id).rx).map(i => `«${drugById(i.id).name}»`).join(', ')} потрібен номер електронного рецепта — він приходить у SMS від лікаря.</div></div></div>
-        <div><label class="field-label" for="erx">Номер е-рецепта</label>
-          <div class="field ${S.erxErr ? 'bad' : ''}" id="erxField"><input id="erx" type="text" inputmode="numeric" maxlength="7" placeholder="000 000" value="${esc(S.erx || '')}" aria-describedby="erxHelp"><span class="erri">${ic('alert')}</span></div>
-          <div class="helper ${S.erxErr ? 'bad' : ''}" id="erxHelp">${S.erxErr ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить рецепт перед тим, як передати ліки кур’єру'}</div></div>
+        <div class="card" style="background:var(--in100)"><div class="row top" style="gap:12px;color:var(--in600)">${ic('rx', 'i20')}<div class="bs">Кур’єр не може перевірити паперовий рецепт. На кожен рецептурний препарат потрібен свій номер електронного рецепта — він приходить у SMS від лікаря.</div></div></div>
+        ${items.filter(i => drugById(i.id).rx).map(i => { const rd = drugById(i.id), bad = dr.erxErr === i.id;
+          return `<div><label class="field-label" for="erx-${i.id}">Номер е-рецепта · ${rd.name}</label>
+          <div class="field ${bad ? 'bad' : ''}" id="erxField-${i.id}"><input id="erx-${i.id}" data-erx="${i.id}" type="text" inputmode="numeric" maxlength="7" placeholder="000 000" value="${esc((dr.erx || {})[i.id] || '')}" aria-describedby="erxHelp-${i.id}"><span class="erri">${ic('alert')}</span></div>
+          <div class="helper ${bad ? 'bad' : ''}" id="erxHelp-${i.id}">${bad ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить саме цей рецепт перед передачею кур’єру'}</div></div>`; }).join('')}
         <div class="bs sec">Немає е-рецепта? Оберіть «Забрати в аптеці» - там приймуть і паперовий.</div>
       ` : ''}
     ` : ''}
@@ -356,7 +358,7 @@ order(p) {
     <div class="card" style="gap:4px"><div class="bss">${o.mode === 'delivery' ? 'Доставка' : 'Самовивіз'}</div>
       <div class="bs sec">${o.mode === 'delivery' ? `${esc(o.addr)}<br>${o.slotLabel}` : `${ph.name}<br>${ph.addr}`}</div>
       <div class="bs sec">Телефон: ${esc(o.phone)}</div>
-      ${o.erx ? `<div class="bs sec">Е-рецепт № ${esc(o.erx)}</div>` : ''}</div>
+      ${o.erx && typeof o.erx === 'object' ? Object.keys(o.erx).map(id => `<div class="bs sec">Е-рецепт № ${esc(o.erx[id])} · ${drugById(id).name}</div>`).join('') : ''}</div>
     ${o.step < 3 ? `<button class="btn text full" data-act="cancel:${o.num}">Скасувати замовлення</button>` : ''}
   </div>
   <div class="actionbar">
@@ -365,7 +367,7 @@ order(p) {
 },
 
 kit() {
-  return { bottom: 'tab', tab: 'kit', html: `${sb()}${tbLarge('Моя аптечка', `<button class="ib" data-act="go:kitadd" aria-label="Додати ліки">${ic('plus')}</button>`)}
+  return { bottom: 'tab', tab: 'kit', html: `${sb()}${tbLarge('Моя аптечка', `<button class="ib" data-act="kitnew" aria-label="Додати ліки">${ic('plus')}</button>`)}
   <div class="content">
     <button class="toggle ${S.remindOn ? 'on' : ''}" data-act="remind" role="switch" aria-checked="${S.remindOn}"><span class="body">Нагадувати, коли закінчуються</span><span class="track"></span></button>
     ${S.kit.length ? S.kit.map(k => { const d = drugById(k.id), dl = daysLeft(k), low = dl <= 3;
@@ -373,6 +375,7 @@ kit() {
       return `<div class="card" style="gap:12px">
         <div class="row top" style="gap:12px"><span class="rem-ic" style="${low ? 'background:var(--wa100);color:var(--wa700)' : ''}">${ic('pill', 'i16')}</span>
           <div class="grow"><div class="h4">${d.name}</div><div class="cap sec">${esc(k.note)}</div></div>
+          <button class="ib" data-act="kitedit:${k.id}" aria-label="Змінити схему прийому">${ic('edit', 'i20')}</button>
           <button class="ib" data-act="kitdel:${k.id}" aria-label="Прибрати">${ic('trash', 'i20')}</button></div>
         <div class="prog"><div style="width:${Math.min(100, dl * 4)}%;background:${low ? 'var(--wa500)' : 'var(--su600)'}"></div></div>
         <div class="bs ${low ? 'warn' : 'sec'}">Залишилось ${k.left} ${k.unit} · на ${dl} ${plural(dl, 'день', 'дні', 'днів')}</div>
@@ -380,7 +383,7 @@ kit() {
           : low ? `<div class="row wrap"><button class="btn primary m" data-act="rebuy:${k.id}">Купити знову</button><button class="btn text m" data-act="bought:${k.id}">Вже купив</button></div>`
           : `<div class="row cap sec">${ic('clock', 'i16')} Наступний прийом сьогодні</div>`}
       </div>`; }).join('')
-    : `<div class="empty"><div class="circle">${ic('pill')}</div><div class="h3">Аптечка порожня</div><div class="bs sec">Додайте ліки, які приймаєте — нагадаємо, коли вони закінчуватимуться.</div><button class="btn secondary m" data-act="go:kitadd">Додати ліки</button></div>`}
+    : `<div class="empty"><div class="circle">${ic('pill')}</div><div class="h3">Аптечка порожня</div><div class="bs sec">Додайте ліки, які приймаєте — нагадаємо, коли вони закінчуватимуться.</div><button class="btn secondary m" data-act="kitnew">Додати ліки</button></div>`}
   </div>${tabbar('kit')}` };
 },
 
@@ -408,7 +411,7 @@ kitadd() {
     <div class="card"><div class="row top" style="gap:12px">${ic('bell', 'i20')}<div class="bs sec">${(() => { const w = Math.floor(sel.left / sel.per) - 2;
       return w >= 1 ? `Нагадаємо ${dateIn(w)}, коли залишиться на 2 дні.` : 'Нагадаємо вже завтра - запасу майже не лишилось.'; })()}</div></div></div>
   </div>
-  <div class="actionbar"><button class="btn primary full" data-act="ka-save">Додати в аптечку</button></div>` };
+  <div class="actionbar"><button class="btn primary full" data-act="ka-save">${sel.edit ? 'Зберегти' : 'Додати в аптечку'}</button></div>` };
 },
 
 reminders() {
@@ -622,10 +625,32 @@ function findDrugs(q) {
     atWordStart(d.name, q) || atWordStart(d.sub, q) || atWordStart(d.use, q)
   ).map(d => d.id);
 }
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 3) return 99;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
 function suggestFor(q) {
-  q = q.trim().toLowerCase(); let best = null, bl = 0;
-  for (const d of DRUGS) for (const k of d.keys) { let i = 0; while (i < k.length && i < q.length && k[i] === q[i]) i++; if (i > bl) { bl = i; best = k; } }
-  return bl >= 5 ? best[0].toUpperCase() + best.slice(1) : null;
+  q = q.trim().toLowerCase();
+  if (q.length < 4) return null;
+  let best = null, bd = 99, bl = 0;
+  for (const d of DRUGS) for (const k of d.keys) {
+    const dist = lev(q, k);
+    const lim = q.length >= 7 ? 3 : q.length >= 5 ? 2 : 1;
+    if (dist <= lim && dist < bd) { bd = dist; best = k; }
+    let i = 0; while (i < k.length && i < q.length && k[i] === q[i]) i++;
+    if (bd === 99 && i > bl) { bl = i; best = k; }
+  }
+  if (bd === 99 && bl < 5) return null;
+  return best.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
 }
 function resultsHTML() {
   if (S.loadingRes) return [0, 1].map(() => `<div class="skel"><div class="sk" style="width:40%"></div><div class="sk" style="width:70%;height:18px"></div><div class="sk" style="width:55%"></div></div>`).join('');
@@ -639,7 +664,7 @@ function resultsHTML() {
     if (ids.length && S.filt.norx) return `<div class="empty"><div class="circle">${ic('rx')}</div><div class="h3">Усе за рецептом</div><div class="bs sec">За цим запитом є лише рецептурні препарати.</div><button class="btn secondary m" data-act="filt:norx">Показати рецептурні</button></div>`;
     if (ids.length && S.filt.open) return `<div class="empty"><div class="circle">${ic('clock')}</div><div class="h3">Немає в цілодобових</div><div class="bs sec">За цим запитом препаратів у цілодобових аптеках зараз немає.</div><button class="btn secondary m" data-act="filt:open">Показати всі аптеки</button></div>`;
     const sug = suggestFor(S.q);
-    return `<div class="empty"><div class="circle">${ic('search')}</div><div class="h3">Нічого не знайдено за «${esc(S.q.trim())}»</div><div class="bs sec">Перевірте назву або шукайте за діючою речовиною.</div>${sug ? `<button class="btn secondary m" data-act="setq:${sug}">Шукати «${sug}»</button>` : `<button class="btn secondary m" data-act="clear">Очистити пошук</button>`}</div>`;
+    return `<div class="empty"><div class="circle">${ic('search')}</div><div class="h3">Нічого не знайдено за «${esc(S.q.trim())}»</div><div class="bs sec">${sug ? `Можливо, ви мали на увазі «${sug}»?` : 'Перевірте назву або шукайте за діючою речовиною.'}</div>${sug ? `<button class="btn primary m" data-act="setq:${sug}">Шукати «${sug}»</button>` : `<button class="btn secondary m" data-act="clear">Очистити пошук</button>`}</div>`;
   }
   return `<div class="bs sec">Знайдено ${list.length} ${plural(list.length, 'препарат', 'препарати', 'препаратів')}</div>` + list.map(d => drugCard(d.id)).join('');
 }
@@ -691,7 +716,7 @@ function afterMount(el) {
   const q = el.querySelector('#q');
   if (q) {
     q.addEventListener('input', e => { S.q = e.target.value; updateResults(true); });
-    if (S.focusSearch) { setTimeout(() => q.focus({ preventScroll: true }), 50); S.focusSearch = false; }
+    if (S.focusSearch) { setTimeout(() => { q.focus({ preventScroll: true }); q.select(); }, 50); S.focusSearch = false; }
   }
   const kq = el.querySelector('#kq');
   if (kq) kq.addEventListener('input', e => { S.kq = e.target.value; rerenderKeepFocus('#kq'); });
@@ -701,13 +726,14 @@ function afterMount(el) {
     ph.addEventListener('input', onPhoneInput);
     ph.addEventListener('blur', () => { const d = digits(ph.value); if (d.length > 3 && d.length < 12) setPhoneErr(true); if (d.length <= 3) ph.value = ''; S.profile.phone = ph.value; });
   }
-  const ex = el.querySelector('#erx');
-  if (ex) ex.addEventListener('input', e => {
+  el.querySelectorAll('[data-erx]').forEach(ex => ex.addEventListener('input', e => {
+    const id = e.target.getAttribute('data-erx');
     const d = digits(e.target.value).slice(0, 6);
     e.target.value = d.length > 3 ? d.slice(0, 3) + ' ' + d.slice(3) : d;
-    S.erx = e.target.value;
-    if (S.erxErr && d.length === 6) setErxErr(false);
-  });
+    if (!S.draft.erx) S.draft.erx = {};
+    S.draft.erx[id] = e.target.value;
+    if (S.draft.erxErr === id && d.length === 6) setErxErr(null);
+  }));
   const ad = el.querySelector('#addr');
   if (ad) ad.addEventListener('input', e => { S.draft.addr = e.target.value; });
   const aq = el.querySelector('#aiq');
@@ -737,12 +763,17 @@ function onPhoneInput(e) {
   S.profile.phone = e.target.value;
   if (S.phoneErr && d.length === 12) setPhoneErr(false);
 }
-function setErxErr(on) {
-  S.erxErr = on;
-  const f = document.getElementById('erxField'), h = document.getElementById('erxHelp');
-  if (!f) return;
-  f.classList.toggle('bad', on); h.classList.toggle('bad', on);
-  h.textContent = on ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить рецепт перед тим, як передати ліки кур’єру';
+function setErxErr(id) {
+  const prev = S.draft ? S.draft.erxErr : null;
+  if (S.draft) S.draft.erxErr = id;
+  [prev, id].forEach(x => {
+    if (!x) return;
+    const f = document.getElementById('erxField-' + x), h = document.getElementById('erxHelp-' + x);
+    if (!f) return;
+    const on = x === id;
+    f.classList.toggle('bad', on); h.classList.toggle('bad', on);
+    h.textContent = on ? 'Номер е-рецепта - це 6 цифр з SMS від лікаря' : 'Аптека погасить саме цей рецепт перед передачею кур’єру';
+  });
 }
 function setPhoneErr(on) {
   S.phoneErr = on;
@@ -773,7 +804,7 @@ function closeSheet() { if (!ov.classList.contains('open')) return; ov.classList
 /* ========== 9. Дії ========== */
 function collapse(id, then) { const el = document.getElementById(id); if (el) { el.classList.add('out-anim'); setTimeout(then, 300); } else then(); }
 function startOrder(items) {
-  S.draft = { items, ph: null, mode: 'pickup', slot: slots()[0].id, addr: S.profile.addr, cut: [] };
+  S.draft = { items, ph: null, mode: 'pickup', slot: slots()[0].id, addr: S.profile.addr, cut: [], erx: {}, erxErr: null };
   S.phoneErr = false; go('pharm');
 }
 function rxCheck(items, then) {
@@ -841,7 +872,19 @@ const ACT = {
   },
   'rx-ok': (id) => { S.rxOk[id] = true; closeSheet(); setTimeout(() => { const phId = S.pendingPh || (S.draft && S.draft.ph); ACT.pick(phId || PHARMACIES[0].id); }, 120); },
   'sheet-close': () => closeSheet(),
-  mode: (m) => { if (m === 'delivery' && !phById(S.draft.ph).delivery) return; S.draft.mode = m; S.erxErr = false; rerender(); },
+  mode: (m) => {
+    if (m === 'delivery' && !phById(S.draft.ph).delivery) return;
+    const dr = S.draft, was = dr.mode;
+    if (m === 'pickup' && was === 'delivery') {
+      const ad = document.getElementById('addr');
+      if (ad) dr.addr = ad.value;
+      const typed = (dr.addr || '').trim().length >= 5 || Object.values(dr.erx || {}).some(v => v);
+      dr.mode = m; dr.erxErr = null; rerender();
+      if (typed) showToast('Перемкнуто на самовивіз. Адресу збережено', { icon: 'info', action: 'Повернути доставку', onAction: () => { S.draft.mode = 'delivery'; rerender(); } });
+      return;
+    }
+    dr.mode = m; dr.erxErr = null; rerender();
+  },
   slot: (s) => { S.draft.slot = s; rerender(); },
   addkit: () => { S.addKit = S.addKit === false ? true : false; const b = document.querySelector('.check'); if (b) { b.classList.toggle('on', S.addKit !== false); b.setAttribute('aria-checked', S.addKit !== false); } },
   submit: () => {
@@ -849,8 +892,10 @@ const ACT = {
     if (d.length !== 12) { setPhoneErr(true); if (ph) { ph.focus(); if (!ph.value) ph.value = '+380 '; } return; }
     const ad = document.getElementById('addr');
     if (S.draft.mode === 'delivery' && ad && ad.value.trim().length < 5) { showToast('Вкажіть адресу доставки', { icon: 'alert' }); ad.focus(); return; }
-    const ex = document.getElementById('erx');
-    if (ex && digits(ex.value).length !== 6) { setErxErr(true); ex.focus(); ex.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (S.draft.mode === 'delivery') {
+      const bad = Array.from(document.querySelectorAll('[data-erx]')).find(x => digits(x.value).length !== 6);
+      if (bad) { setErxErr(bad.getAttribute('data-erx')); bad.focus(); bad.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    }
     const btn = document.getElementById('okBtn'); btn.classList.add('loading'); btn.innerHTML = `${ic('loader', 'spin')} Зачекайте…`;
     setTimeout(() => {
       const dr = S.draft, phd = phById(dr.ph);
@@ -859,14 +904,13 @@ const ACT = {
       const num = String(++S.orderSeq).replace(/(\d{2})(\d{3})/, '$1 $2');
       const o = { num, ph: dr.ph, mode: dr.mode, items: dr.items, total, step: 1, phone: S.profile.phone,
         addr: ad ? ad.value : S.profile.addr, slotLabel: dr.mode === 'delivery' ? slot.label : '', date: 'сьогодні',
-        erx: (ex && dr.mode === 'delivery') ? ex.value : '', at: Date.now(), added: [] };
+        erx: dr.mode === 'delivery' ? Object.assign({}, dr.erx) : null, at: Date.now(), added: [] };
       S.orders.push(o);
       if (S.addKit !== false) dr.items.forEach(i => {
         const k = kitItem(i.id), d2 = drugById(i.id), add = parseInt((d2.pack.match(/\d+/) || [20])[0], 10) * i.qty;
         if (k) { k.left += add; o.added.push({ id: i.id, n: add, created: false }); }
         else { S.kit.push({ id: i.id, left: add, per: 1, unit: 'шт.', note: d2.dose }); o.added.push({ id: i.id, n: add, created: true }); }
       });
-      S.erx = ''; S.erxErr = false;
       S.cart = S.cart.filter(c => !dr.items.some(i => i.id === c.id));
       setTimeout(() => { const oo = S.orders.find(x => x.num === num); if (oo && oo.step === 1) { oo.step = 2; save(); if (['success', 'order', 'home'].includes(cur().s)) rerender(); } }, 9000);
       S.stack = [{ s: 'success', num }]; mount('fwd');
@@ -911,14 +955,16 @@ const ACT = {
   unsnooze: () => { S.snooze = {}; rerender(); },
   remind: () => { S.remindOn = !S.remindOn; rerender(); showToast(S.remindOn ? 'Нагадування увімкнено' : 'Нагадування вимкнено', { icon: 'bell' }); },
   kitdel: (id) => { S.kit = S.kit.filter(k => k.id !== id); rerender(); showToast('Прибрано з аптечки', { icon: 'info' }); },
-  kitpick: (id) => { const d = drugById(id); S.kitAdd = { id, left: parseInt((d.pack.match(/\d+/) || [20])[0], 10), per: 1 }; rerender(); },
+  kitpick: (id) => { const d = drugById(id); S.kitAdd = { id, left: parseInt((d.pack.match(/\d+/) || [20])[0], 10), per: 1, edit: false }; rerender(); },
+  kitnew: () => { S.kq = ''; S.kitAdd = null; go('kitadd'); },
+  kitedit: (id) => { const k = kitItem(id); if (!k) return; S.kitAdd = { id, left: k.left, per: k.per, edit: true }; go('kitadd'); },
   ka: (arg) => { const [f, n] = arg.split(':'); S.kitAdd[f] = Math.max(1, S.kitAdd[f] + (+n)); rerender(); },
   'ka-save': () => {
     const s = S.kitAdd, d = drugById(s.id), ex = kitItem(s.id);
     const note = `${s.per} ${plural(s.per, 'раз', 'рази', 'разів')} на день`;
     if (ex) { ex.left = s.left; ex.per = s.per; ex.note = note; } else S.kit.push({ id: s.id, left: s.left, per: s.per, unit: 'шт.', note });
     S.kitAdd = null; S.kq = ''; S.stack = [{ s: 'kit' }]; mount('back');
-    setTimeout(() => showToast(`${d.name} додано в аптечку`, { icon: 'check' }), 200);
+    setTimeout(() => showToast(`${d.name} — схему прийому ${s.edit ? 'оновлено' : 'додано в аптечку'}`, { icon: 'check' }), 200);
   },
   reset: () => openSheet(`<div class="circle danger">${ic('alert')}</div><h2 class="h2 center">Очистити дані?</h2>
     <div class="body sec center">Замовлення, аптечка й налаштування повернуться до початкових. Це потрібно перед новою сесією тестування.</div>
