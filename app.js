@@ -54,12 +54,13 @@ function initState() {
       { id: 'd3', left: 24, per: 1, unit: 'капс.', note: '1 капс. щодня, зранку' },
       { id: 'lorat', left: 7, per: 1, unit: 'таб.', note: '1 таб. увечері' },
     ],
-    doneToday: [], remindOn: true,
+    doneToday: [], snooze: {}, remindOn: true,
     profile: { name: 'Юрій', phone: '', addr: 'вул. Пасічна, 42, кв. 17' },
     phSort: 'near', kitAdd: null,
   };
 }
 let S = load() || initState();
+if (!S.snooze) S.snooze = {};
 function load() { try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 const cur = () => S.stack[S.stack.length - 1];
@@ -72,7 +73,19 @@ const cartCount = () => S.cart.reduce((a, i) => a + i.qty, 0);
 const daysLeft = (k) => Math.floor(k.left / Math.max(k.per, 1));
 const kitItem = (id) => S.kit.find(k => k.id === id);
 
-const sb = () => `<div class="sb"><span>9:41</span><span><i></i><i></i><i></i></span></div>`;
+const hhmmOf = (ms) => { const d = new Date(ms); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const hhmm = () => { const d = new Date(); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const sb = () => `<div class="sb"><span id="clock">${hhmm()}</span><span><i></i><i></i><i></i></span></div>`;
+
+/* слоти доставки рахуються від поточного часу */
+function slots() {
+  const h = new Date().getHours(), out = [];
+  if (h >= 8 && h < 19) out.push({ id: 'now', label: 'Найближчі 2 години', price: 69, note: 'кур’єр забере в аптеці' });
+  if (h < 18) out.push({ id: 'eve', label: `Сьогодні, ${Math.max(h + 2, 12)}:00-21:00`, price: 49, note: '' });
+  out.push({ id: 'tmr', label: 'Завтра, 10:00-14:00', price: 39, note: out.length ? 'найдешевше' : 'найближча доставка' });
+  return out;
+}
+const slotById = (id) => { const l = slots(); return l.find(s => s.id === id) || l[l.length - 1]; };
 const cartBtn = () => `<button class="ib" data-act="go:cart" aria-label="Кошик">${ic('bag')}${cartCount() ? `<span class="dot">${cartCount()}</span>` : ''}</button>`;
 const tbLarge = (t, extra = '') => `<div class="tb-large"><h1 class="h1">${t}</h1><div class="row">${extra}${cartBtn()}</div></div>`;
 const tbBack = (t, extra = '') => `<div class="tb-back">${S.stack.length > 1 ? `<button class="ib" data-act="back" aria-label="Назад">${ic('back')}</button>` : '<span style="width:8px"></span>'}<h2 class="h3">${t}</h2>${extra}</div>`;
@@ -81,6 +94,9 @@ const tabbar = (on) => `<nav class="tabbar">${[['home', 'home', 'Головна'
 const badge = (cls, icon, t) => `<span class="badge ${cls}">${icon ? ic(icon, 'i14') : ''}${t}</span>`;
 const stockBadge = (n, need) => n === 0 ? badge('b-out', 'close', 'Немає')
   : (n < need ? badge('b-low', 'alert', `Мало: ${n} уп.`) : badge('b-ok', 'check', `Є ${need} уп.`));
+
+const MONTHS = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
+const dateIn = (days) => { const d = new Date(Date.now() + days * 864e5); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 
 const nearestKm = (d) => Math.min(...PHARMACIES.filter(p => stockOf(d.id, p.id) > 0).map(p => p.km), 99);
 
@@ -256,7 +272,7 @@ checkout() {
   const dr = S.draft, ph = phById(dr.ph), items = dr.items;
   const hasRx = items.some(i => drugById(i.id).rx);
   const goods = items.reduce((a, i) => a + priceOf(drugById(i.id), ph.id) * i.qty, 0);
-  const slot = DELIVERY_SLOTS.find(s => s.id === dr.slot) || DELIVERY_SLOTS[0];
+  const slot = slotById(dr.slot);
   const ship = dr.mode === 'delivery' ? slot.price : 0;
   return { bottom: 'single', html: `${sb()}${tbBack('Оформлення')}
   <div class="content">
@@ -270,6 +286,8 @@ checkout() {
       <div class="row between"><span class="strong">До сплати</span><span class="h3">${money(goods + ship)}</span></div>
     </div>
 
+    ${dr.cut && dr.cut.length ? `<div class="card" style="background:var(--wa100)"><div class="row top" style="gap:12px;color:var(--wa700)">${ic('alert', 'i20')}<div class="bs">${dr.cut.map(c => `${drugById(c.id).name}: у цій аптеці є ${c.to} уп. замість ${c.from}`).join('; ')}. Кількість зменшено. Решту можна забронювати в іншій аптеці.</div></div></div>` : ''}
+
     <h2 class="h3">Як отримати</h2>
     <button class="radio ${dr.mode === 'pickup' ? 'on' : ''}" data-act="mode:pickup"><span class="rdot"></span><div class="grow"><div class="bss">Забрати в аптеці</div><div class="bs sec">Безкоштовно · до ${ph.close === '24:00' ? '24:00' : ph.close} сьогодні${hasRx ? ' · рецепт покажете на місці' : ''}</div></div></button>
     <button class="radio ${dr.mode === 'delivery' ? 'on' : ''}" data-act="mode:delivery" ${ph.delivery ? '' : 'disabled style="opacity:.5"'}><span class="rdot"></span><div class="grow"><div class="bss">Доставка кур’єром</div><div class="bs sec">${ph.delivery ? `від ${money(39)} · ліки привезуть додому` : 'ця аптека не доставляє'}</div></div></button>
@@ -278,7 +296,7 @@ checkout() {
       <div><label class="field-label" for="addr">Адреса доставки</label>
       <div class="field"><input id="addr" type="text" value="${esc(dr.addr || S.profile.addr)}" placeholder="вулиця, будинок, квартира"></div></div>
       <h2 class="h3">Коли привезти</h2>
-      ${DELIVERY_SLOTS.map(s => `<button class="radio ${slot.id === s.id ? 'on' : ''}" data-act="slot:${s.id}"><span class="rdot"></span><div class="grow"><div class="bss">${s.label}</div><div class="bs sec">${money(s.price)}${s.note ? ' · ' + s.note : ''}</div></div></button>`).join('')}
+      ${slots().map(s => `<button class="radio ${slot.id === s.id ? 'on' : ''}" data-act="slot:${s.id}"><span class="rdot"></span><div class="grow"><div class="bss">${s.label}</div><div class="bs sec">${money(s.price)}${s.note ? ' · ' + s.note : ''}</div></div></button>`).join('')}
       ${hasRx ? `
         <h2 class="h3">Рецепт</h2>
         <div class="card" style="background:var(--in100)"><div class="row top" style="gap:12px;color:var(--in600)">${ic('rx', 'i20')}<div class="bs">Кур’єр не може перевірити паперовий рецепт. Для доставки ${items.filter(i => drugById(i.id).rx).map(i => `«${drugById(i.id).name}»`).join(', ')} потрібен номер електронного рецепта — він приходить у SMS від лікаря.</div></div></div>
@@ -327,7 +345,7 @@ orders() {
 order(p) {
   const o = S.orders.find(x => x.num === p.num), ph = phById(o.ph);
   const steps = o.mode === 'delivery' ? ['Готується', 'У дорозі', 'Доставлено'] : ['Готується', 'Готово до видачі', 'Видано'];
-  return { bottom: 'single', html: `${sb()}${tbBack(`Замовлення № ${o.num}`)}
+  return { bottom: o.step === 2 ? 'double' : 'single', html: `${sb()}${tbBack(`Замовлення № ${o.num}`)}
   <div class="content">
     <div class="card">
       <div class="row wrap">${statusBadge(o)}</div>
@@ -341,7 +359,9 @@ order(p) {
       ${o.erx ? `<div class="bs sec">Е-рецепт № ${esc(o.erx)}</div>` : ''}</div>
     ${o.step < 3 ? `<button class="btn text full" data-act="cancel:${o.num}">Скасувати замовлення</button>` : ''}
   </div>
-  <div class="actionbar"><button class="btn ${o.step >= 3 ? 'primary' : 'secondary'} full" data-act="again:${o.num}">Замовити знову</button></div>` };
+  <div class="actionbar">
+    ${o.step === 2 ? `<button class="btn primary full" data-act="got:${o.num}">${o.mode === 'delivery' ? 'Кур\u2019єр привіз' : 'Я забрав в аптеці'}</button>` : ''}
+    <button class="btn ${o.step >= 3 ? 'primary' : 'secondary'} full" data-act="again:${o.num}">Замовити знову</button></div>` };
 },
 
 kit() {
@@ -385,7 +405,8 @@ kitadd() {
       <div class="stepper"><button class="stp" data-act="ka:left:-1" ${sel.left <= 1 ? 'disabled' : ''}>${ic('minus')}</button><span class="qty">${sel.left}</span><button class="stp" data-act="ka:left:1">${ic('plus')}</button></div></div>
     <div><div class="strong" style="margin-bottom:8px">Скільки приймати на день</div>
       <div class="stepper"><button class="stp" data-act="ka:per:-1" ${sel.per <= 1 ? 'disabled' : ''}>${ic('minus')}</button><span class="qty">${sel.per} / день</span><button class="stp" data-act="ka:per:1" ${sel.per >= 6 ? 'disabled' : ''}>${ic('plus')}</button></div></div>
-    <div class="card"><div class="row top" style="gap:12px">${ic('bell', 'i20')}<div class="bs sec">Нагадаємо за ${Math.max(1, Math.floor(sel.left / sel.per) - 2)} ${plural(Math.max(1, Math.floor(sel.left / sel.per) - 2), 'день', 'дні', 'днів')}, коли залишиться на 2 дні.</div></div></div>
+    <div class="card"><div class="row top" style="gap:12px">${ic('bell', 'i20')}<div class="bs sec">${(() => { const w = Math.floor(sel.left / sel.per) - 2;
+      return w >= 1 ? `Нагадаємо ${dateIn(w)}, коли залишиться на 2 дні.` : 'Нагадаємо вже завтра - запасу майже не лишилось.'; })()}</div></div></div>
   </div>
   <div class="actionbar"><button class="btn primary full" data-act="ka-save">Додати в аптечку</button></div>` };
 },
@@ -395,7 +416,8 @@ reminders() {
   return { bottom: 'tab', tab: 'reminders', html: `${sb()}${tbLarge('Нагадування')}
   <div class="content">
     ${list.length ? `<div class="strong sec">Сьогодні</div>${list.map(remCard).join('')}`
-    : `<div class="empty"><div class="circle">${ic('check')}</div><div class="h3">На сьогодні все</div><div class="bs sec">Нові нагадування зʼявляться тут: про прийом ліків і про те, що вони закінчуються.</div><button class="btn secondary m" data-act="tab:kit">Відкрити аптечку</button></div>`}
+    : (nextSnooze() ? `<div class="empty"><div class="circle">${ic('clock')}</div><div class="h3">Відкладено</div><div class="bs sec">Наступне нагадування о ${hhmmOf(nextSnooze())}. Поки що тут порожньо.</div><button class="btn secondary m" data-act="unsnooze">Показати зараз</button></div>`
+      : `<div class="empty"><div class="circle">${ic('check')}</div><div class="h3">На сьогодні все</div><div class="bs sec">Нові нагадування зʼявляться тут: про прийом ліків і про те, що вони закінчуються.</div><button class="btn secondary m" data-act="tab:kit">Відкрити аптечку</button></div>`)}
   </div>${tabbar('reminders')}` };
 },
 
@@ -456,8 +478,17 @@ function todayReminders() {
     if (S.doneToday.includes('low:' + k.id)) return;
     if (daysLeft(k) <= 3 && !S.orders.some(o => o.step < 3 && o.items.some(i => i.id === k.id))) out.push({ t: 'low', k });
   });
-  S.kit.forEach(k => { if (!S.doneToday.includes('dose:' + k.id)) out.push({ t: 'dose', k }); });
+  const now = Date.now();
+  S.kit.forEach(k => {
+    if (S.doneToday.includes('dose:' + k.id)) return;
+    if ((S.snooze['dose:' + k.id] || 0) > now) return;
+    out.push({ t: 'dose', k });
+  });
   return out;
+}
+function nextSnooze() {
+  const now = Date.now(), t = Object.values(S.snooze || {}).filter(x => x > now);
+  return t.length ? Math.min.apply(null, t) : 0;
 }
 function remCard(r, compact) {
   const d = drugById(r.k.id);
@@ -511,7 +542,13 @@ function updateResults(withSkeleton) {
 /* ========== 6. Роутер ========== */
 const vp = document.getElementById('vp');
 let bottomKind = 'tab';
+function syncOrders() {
+  let ch = false;
+  S.orders.forEach(o => { if (o.step === 1 && o.at && Date.now() - o.at > 9000) { o.step = 2; ch = true; } });
+  return ch;
+}
 function mount(dir) {
+  syncOrders();
   const c = cur(), def = SCREENS[c.s](c);
   if (dir) hideToast();
   bottomKind = def.bottom;
@@ -619,7 +656,7 @@ function closeSheet() { if (!ov.classList.contains('open')) return; ov.classList
 /* ========== 9. Дії ========== */
 function collapse(id, then) { const el = document.getElementById(id); if (el) { el.classList.add('out-anim'); setTimeout(then, 300); } else then(); }
 function startOrder(items) {
-  S.draft = { items, ph: null, mode: 'pickup', slot: 'eve', addr: S.profile.addr };
+  S.draft = { items, ph: null, mode: 'pickup', slot: slots()[0].id, addr: S.profile.addr, cut: [] };
   S.phoneErr = false; go('pharm');
 }
 function rxCheck(items, then) {
@@ -668,9 +705,14 @@ const ACT = {
   'cart-go': () => startOrder(S.cart.map(i => ({ id: i.id, qty: i.qty }))),
   pick: (phId) => {
     S.pendingPh = phId;
-    const o = phOffers(S.draft.items).find(x => x.ph.id === phId);
-    const items = S.draft.items.map(i => { const m = o.miss.find(x => x.id === i.id); return m ? { id: i.id, qty: m.st } : i; }).filter(i => i.qty > 0);
-    rxCheck(items, () => { S.draft.ph = phId; S.draft.items = items; if (!phById(phId).delivery) S.draft.mode = 'pickup'; go('checkout'); });
+    const o = phOffers(S.draft.items).find(x => x.ph.id === phId), cut = [];
+    const items = S.draft.items.map(i => {
+      const m = o.miss.find(x => x.id === i.id);
+      if (!m) return i;
+      if (m.st < i.qty) cut.push({ id: i.id, from: i.qty, to: m.st });
+      return { id: i.id, qty: m.st };
+    }).filter(i => i.qty > 0);
+    rxCheck(items, () => { S.draft.ph = phId; S.draft.items = items; S.draft.cut = cut; if (!phById(phId).delivery) S.draft.mode = 'pickup'; go('checkout'); });
   },
   'rx-ok': (id) => { S.rxOk[id] = true; closeSheet(); setTimeout(() => { const phId = S.pendingPh || (S.draft && S.draft.ph); ACT.pick(phId || PHARMACIES[0].id); }, 120); },
   'sheet-close': () => closeSheet(),
@@ -687,17 +729,19 @@ const ACT = {
     const btn = document.getElementById('okBtn'); btn.classList.add('loading'); btn.innerHTML = `${ic('loader', 'spin')} Зачекайте…`;
     setTimeout(() => {
       const dr = S.draft, phd = phById(dr.ph);
-      const slot = DELIVERY_SLOTS.find(s => s.id === dr.slot);
+      const slot = slotById(dr.slot);
       const total = dr.items.reduce((a, i) => a + priceOf(drugById(i.id), dr.ph) * i.qty, 0) + (dr.mode === 'delivery' ? slot.price : 0);
       const num = String(++S.orderSeq).replace(/(\d{2})(\d{3})/, '$1 $2');
       const o = { num, ph: dr.ph, mode: dr.mode, items: dr.items, total, step: 1, phone: S.profile.phone,
         addr: ad ? ad.value : S.profile.addr, slotLabel: dr.mode === 'delivery' ? slot.label : '', date: 'сьогодні',
-        erx: (ex && dr.mode === 'delivery') ? ex.value : '' };
+        erx: (ex && dr.mode === 'delivery') ? ex.value : '', at: Date.now(), added: [] };
       S.orders.push(o);
       if (S.addKit !== false) dr.items.forEach(i => {
         const k = kitItem(i.id), d2 = drugById(i.id), add = parseInt((d2.pack.match(/\d+/) || [20])[0], 10) * i.qty;
-        if (k) k.left += add; else S.kit.push({ id: i.id, left: add, per: 1, unit: 'шт.', note: d2.dose });
+        if (k) { k.left += add; o.added.push({ id: i.id, n: add, created: false }); }
+        else { S.kit.push({ id: i.id, left: add, per: 1, unit: 'шт.', note: d2.dose }); o.added.push({ id: i.id, n: add, created: true }); }
       });
+      S.erx = ''; S.erxErr = false;
       S.cart = S.cart.filter(c => !dr.items.some(i => i.id === c.id));
       setTimeout(() => { const oo = S.orders.find(x => x.num === num); if (oo && oo.step === 1) { oo.step = 2; save(); if (['success', 'order', 'home'].includes(cur().s)) rerender(); } }, 9000);
       S.stack = [{ s: 'success', num }]; mount('fwd');
@@ -709,7 +753,21 @@ const ACT = {
   cancel: (num) => openSheet(`<div class="circle danger">${ic('alert')}</div><h2 class="h2 center">Скасувати замовлення?</h2>
     <div class="body sec center">Аптека зніме резерв, і препарат зможуть купити інші.</div>
     <button class="btn primary full" data-act="cancel-yes:${num}">Так, скасувати</button><button class="btn text full" data-act="sheet-close">Залишити</button>`),
-  'cancel-yes': (num) => { closeSheet(); S.orders = S.orders.filter(o => o.num !== num); tab('home'); setTimeout(() => showToast('Замовлення скасовано', { icon: 'info' }), 200); },
+  'cancel-yes': (num) => {
+    closeSheet();
+    const o = S.orders.find(x => x.num === num);
+    if (o && o.added) o.added.forEach(a => {
+      if (a.created) { S.kit = S.kit.filter(x => x.id !== a.id); return; }
+      const k = kitItem(a.id); if (k) k.left = Math.max(0, k.left - a.n);
+    });
+    S.orders = S.orders.filter(x => x.num !== num); tab('home');
+    setTimeout(() => showToast('Замовлення скасовано', { icon: 'info' }), 200);
+  },
+  got: (num) => {
+    const o = S.orders.find(x => x.num === num); if (!o) return;
+    o.step = 3; rerender();
+    showToast(o.mode === 'delivery' ? 'Замовлення доставлено' : 'Замовлення отримано', { icon: 'check' });
+  },
   again: (num) => { const o = S.orders.find(x => x.num === num); startOrder(o.items.map(i => ({ id: i.id, qty: i.qty }))); },
   rebuy: (id) => { const k = kitItem(id); S.qty[id] = 1; startOrder([{ id, qty: 1 }]); },
   later: (id) => collapse('rem-low-' + id, () => { S.doneToday.push('low:' + id); rerender(); showToast('Нагадаємо завтра о 10:00', { icon: 'bell', action: 'Скасувати', onAction: () => { S.doneToday = S.doneToday.filter(x => x !== 'low:' + id); rerender(); } }); }),
@@ -720,7 +778,12 @@ const ACT = {
     showToast(`${d.name} поповнено в аптечці`, { icon: 'check' });
   }),
   taken: (id) => collapse('rem-dose-' + id, () => { const k = kitItem(id); k.left = Math.max(0, k.left - 1); S.doneToday.push('dose:' + id); rerender(); showToast('Прийом відмічено', { icon: 'check', action: 'Скасувати', onAction: () => { k.left += 1; S.doneToday = S.doneToday.filter(x => x !== 'dose:' + id); rerender(); } }); }),
-  snooze: (id) => collapse('rem-dose-' + id, () => { S.doneToday.push('dose:' + id); rerender(); const t = new Date(Date.now() + 15 * 60000); showToast(`Нагадаємо о ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`, { icon: 'clock' }); }),
+  snooze: (id) => collapse('rem-dose-' + id, () => {
+    const at = Date.now() + 15 * 60000;
+    S.snooze['dose:' + id] = at; rerender();
+    showToast(`Нагадаємо о ${hhmmOf(at)}`, { icon: 'clock', action: 'Скасувати', onAction: () => { delete S.snooze['dose:' + id]; rerender(); } });
+  }),
+  unsnooze: () => { S.snooze = {}; rerender(); },
   remind: () => { S.remindOn = !S.remindOn; rerender(); showToast(S.remindOn ? 'Нагадування увімкнено' : 'Нагадування вимкнено', { icon: 'bell' }); },
   kitdel: (id) => { S.kit = S.kit.filter(k => k.id !== id); rerender(); showToast('Прибрано з аптечки', { icon: 'info' }); },
   kitpick: (id) => { const d = drugById(id); S.kitAdd = { id, left: parseInt((d.pack.match(/\d+/) || [20])[0], 10), per: 1 }; rerender(); },
@@ -750,6 +813,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 window.addEventListener('offline', () => document.getElementById('banner').classList.add('show'));
 window.addEventListener('online', () => document.getElementById('banner').classList.remove('show'));
 if (!navigator.onLine) document.getElementById('banner').classList.add('show');
+
+let snoozeWas = 0;
+setInterval(() => {
+  const c = document.getElementById('clock'); if (c) c.textContent = hhmm();
+  const n = nextSnooze();
+  if (syncOrders() && ['home', 'order', 'orders', 'success'].includes(cur().s)) rerender();
+  else if (snoozeWas && !n && ['reminders', 'home'].includes(cur().s)) rerender();
+  snoozeWas = n;
+}, 20000);
 
 mount(null);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
