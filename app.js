@@ -502,10 +502,23 @@ function remCard(r, compact) {
 }
 
 /* ========== 5. Пошук ========== */
+/* збіг лише з початку слова: «ар» не має знаходити «жарознижувальне» */
+function atWordStart(text, q) {
+  const t = (text || '').toLowerCase();
+  let i = t.indexOf(q);
+  while (i !== -1) {
+    if (i === 0 || ' ,.;:-(/'.includes(t[i - 1])) return true;
+    i = t.indexOf(q, i + 1);
+  }
+  return false;
+}
 function findDrugs(q) {
   q = q.trim().toLowerCase();
   if (q.length < 2) return null;
-  return DRUGS.filter(d => d.keys.some(k => k.startsWith(q) || q.startsWith(k)) || d.name.toLowerCase().includes(q) || d.use.includes(q) || d.sub.toLowerCase().includes(q)).map(d => d.id);
+  return DRUGS.filter(d =>
+    d.keys.some(k => k.startsWith(q) || (k.length >= 4 && q.startsWith(k))) ||
+    atWordStart(d.name, q) || atWordStart(d.sub, q) || atWordStart(d.use, q)
+  ).map(d => d.id);
 }
 function suggestFor(q) {
   q = q.trim().toLowerCase(); let best = null, bl = 0;
