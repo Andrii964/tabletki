@@ -55,7 +55,8 @@ function initState() {
       { id: 'lorat', left: 7, per: 1, unit: 'таб.', note: '1 таб. увечері' },
     ],
     doneToday: [], snooze: {}, remindOn: true,
-    profile: { name: 'Юрій', phone: '', addr: 'вул. Пасічна, 42, кв. 17' },
+    profile: { name: '', phone: '', addr: 'вул. Пасічна, 42, кв. 17' },
+    onboarded: false,
     phSort: 'near', kitAdd: null,
   };
 }
@@ -135,10 +136,26 @@ function sortOffers(list) {
 /* ========== 4. Екрани ========== */
 const SCREENS = {
 
+hello() {
+  const first = !S.onboarded;
+  return { bottom: 'double', html: `${sb()}${first ? '' : tbBack('Імʼя')}
+  <div class="content"${first ? ' style="padding-top:40px"' : ''}>
+    ${first ? `<div class="circle" style="width:64px;height:64px">${ic('pill')}</div>
+    <h1 class="h1">Tabletki.ua</h1>
+    <div class="body sec">Пошук ліків в аптеках, бронювання і нагадування про прийом.</div>` : ''}
+    <div style="margin-top:8px"><label class="field-label" for="nm">Як до вас звертатися?</label>
+      <div class="field"><input id="nm" type="text" autocomplete="given-name" maxlength="24" placeholder="Імʼя" value="${esc(S.profile.name)}"></div>
+      <div class="helper">Імʼя показується лише на цьому пристрої.</div></div>
+  </div>
+  <div class="actionbar"><button class="btn primary full" data-act="hello-go">${first ? 'Почати' : 'Зберегти'}</button>
+    <button class="btn text full" data-act="hello-skip">${first ? 'Пропустити' : 'Прибрати імʼя'}</button></div>` };
+},
+
 home() {
   const acts = S.orders.filter(o => o.step < 3).slice().reverse();
   const rem = todayReminders();
-  return { bottom: 'tab', tab: 'home', html: `${sb()}${tbLarge(`Добрий день, ${esc(S.profile.name)}`, `<button class="ib" data-act="go:profile" aria-label="Профіль">${ic('user')}</button>`)}
+  const hi = S.profile.name ? `Добрий день, ${esc(S.profile.name)}` : 'Добрий день';
+  return { bottom: 'tab', tab: 'home', html: `${sb()}${tbLarge(hi, `<button class="ib" data-act="go:profile" aria-label="Профіль">${ic('user')}</button>`)}
   <div class="content">
     <button class="search" data-act="open-search">${ic('search', 'muted')}<span class="body muted">Назва ліків або симптом</span></button>
     ${rem.length ? remCard(rem[0], true) : ''}
@@ -447,7 +464,8 @@ profile() {
   return { bottom: 'none', html: `${sb()}${tbBack('Профіль')}
   <div class="content">
     <div class="card"><div class="row top" style="gap:12px"><span class="circle" style="width:48px;height:48px">${ic('user')}</span>
-      <div class="grow"><div class="h4">${esc(S.profile.name)}</div><div class="bs sec">${esc(S.profile.phone || 'Телефон не вказано')}</div></div></div></div>
+      <div class="grow"><div class="h4">${esc(S.profile.name || 'Імʼя не вказано')}</div><div class="bs sec">${esc(S.profile.phone || 'Телефон не вказано')}</div></div>
+      <button class="ib" data-act="go:hello" aria-label="Змінити імʼя">${ic('edit', 'i20')}</button></div></div>
     <button class="card card-btn" data-act="go:orders"><div class="row between"><span class="row body">${ic('bag', 'i20')} &nbsp;Мої замовлення</span><span class="row bs sec">${S.orders.length}&nbsp;${ic('chev', 'i16')}</span></div></button>
     <button class="card card-btn" data-act="go:ai"><div class="row between"><span class="row body ai">${ic('sparkle', 'i20')} &nbsp;ШІ-помічник</span>${ic('chev', 'i16')}</div></button>
     <div class="card" style="gap:4px"><div class="bss">Адреса доставки</div><div class="bs sec">${esc(S.profile.addr)}</div></div>
@@ -710,7 +728,7 @@ function rerender() {
 }
 function go(s, p) { S.stack.push(Object.assign({ s }, p || {})); mount('fwd'); }
 function back() { if (S.stack.length > 1) { S.stack.pop(); closeSheet(); mount('back'); } }
-function tab(s) { closeSheet(); S.stack = [{ s }]; if (s === 'search') S.focusSearch = true; mount('fade'); }
+function tab(s) { closeSheet(); S.stack = [{ s }]; if (s === 'search') { S.q = ''; S.focusSearch = true; } mount('fade'); }
 
 function afterMount(el) {
   const q = el.querySelector('#q');
@@ -736,6 +754,11 @@ function afterMount(el) {
   }));
   const ad = el.querySelector('#addr');
   if (ad) ad.addEventListener('input', e => { S.draft.addr = e.target.value; });
+  const nm = el.querySelector('#nm');
+  if (nm) {
+    setTimeout(() => nm.focus({ preventScroll: true }), 80);
+    nm.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ACT['hello-go'](); } });
+  }
   const aq = el.querySelector('#aiq');
   if (aq) aq.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ACT.aisend(); } });
   const chat = el.querySelector('#chat');
@@ -819,7 +842,13 @@ const ACT = {
   back, tab: (s) => tab(s),
   go: (s) => go(s),
   cat: (id) => go('category', { cat: id }),
-  'open-search': () => { S.focusSearch = true; go('search'); },
+  'hello-go': () => {
+    const n = document.getElementById('nm');
+    S.profile.name = n ? n.value.trim().slice(0, 24) : '';
+    S.onboarded = true; S.stack = [{ s: 'home' }]; mount('fwd');
+  },
+  'hello-skip': () => { S.profile.name = ''; S.onboarded = true; S.stack = [{ s: 'home' }]; mount('fwd'); },
+  'open-search': () => { S.q = ''; S.focusSearch = true; go('search'); },
   clear: () => { S.q = ''; const q = document.getElementById('q'); if (q) { q.value = ''; q.focus(); } updateResults(false); },
   setq: (v) => { S.q = v; const q = document.getElementById('q'); if (q) q.value = v; updateResults(true); },
   filt: (k) => { S.filt[k] = !S.filt[k]; rerenderKeepFocus('#q'); },
@@ -969,7 +998,7 @@ const ACT = {
   reset: () => openSheet(`<div class="circle danger">${ic('alert')}</div><h2 class="h2 center">Очистити дані?</h2>
     <div class="body sec center">Замовлення, аптечка й налаштування повернуться до початкових. Це потрібно перед новою сесією тестування.</div>
     <button class="btn primary full" data-act="reset-yes">Так, очистити</button><button class="btn text full" data-act="sheet-close">Скасувати</button>`),
-  'reset-yes': () => { closeSheet(); try { localStorage.removeItem(KEY); } catch (e) {} S = initState(); mount('fade'); setTimeout(() => showToast('Дані очищено', { icon: 'refresh' }), 200); },
+  'reset-yes': () => { closeSheet(); try { localStorage.removeItem(KEY); } catch (e) {} S = initState(); S.stack = [{ s: 'hello' }]; mount('fade'); },
   toast: () => { const f = toastAct; hideToast(); if (f) f(); },
 };
 
@@ -994,5 +1023,6 @@ setInterval(() => {
   snoozeWas = n;
 }, 20000);
 
+if (!S.onboarded) S.stack = [{ s: 'hello' }];
 mount(null);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

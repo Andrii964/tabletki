@@ -1,5 +1,5 @@
 /* Офлайн-кеш. Онлайн — завжди свіжі файли, офлайн — з кешу. */
-const CACHE = 'tabletki-v3';
+const CACHE = 'tabletki-v4';
 const FILES = ['./', './index.html', './app.css', './data.js', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
