@@ -90,7 +90,7 @@ const slotById = (id) => { const l = slots(); return l.find(s => s.id === id) ||
 const cartBtn = () => `<button class="ib" data-act="go:cart" aria-label="Кошик">${ic('bag')}${cartCount() ? `<span class="dot">${cartCount()}</span>` : ''}</button>`;
 const tbLarge = (t, extra = '') => `<div class="tb-large"><h1 class="h1">${t}</h1><div class="row">${extra}${cartBtn()}</div></div>`;
 const tbBack = (t, extra = '') => `<div class="tb-back">${S.stack.length > 1 ? `<button class="ib" data-act="back" aria-label="Назад">${ic('back')}</button>` : '<span style="width:8px"></span>'}<h2 class="h3">${t}</h2>${extra}</div>`;
-const tabbar = (on) => `<nav class="tabbar">${[['home', 'home', 'Головна'], ['search', 'search', 'Пошук'], ['kit', 'pill', 'Аптечка'], ['reminders', 'bell', 'Нагадування']]
+const tabbar = (on) => `<nav class="tabbar">${[['home', 'home', 'Головна'], ['search', 'search', 'Пошук'], ['ai', 'sparkle', 'ШІ-помічник'], ['kit', 'pill', 'Аптечка'], ['reminders', 'bell', 'Нагадування']]
   .map(([k, i, l]) => `<button class="tab ${on === k ? 'on' : ''}" data-act="tab:${k}" aria-current="${on === k}"><span class="pill">${ic(i)}</span><span class="cap">${l}</span></button>`).join('')}</nav>`;
 const badge = (cls, icon, t) => `<span class="badge ${cls}">${icon ? ic(icon, 'i14') : ''}${t}</span>`;
 const stockBadge = (n, need) => n === 0 ? badge('b-out', 'close', 'Немає')
@@ -211,11 +211,12 @@ drug(p) {
     ${an.length ? `<button class="card card-btn" data-act="analogs:${d.id}" style="gap:4px">
       <div class="row between"><span class="bss">Аналоги — ${an.length} ${plural(an.length, 'препарат', 'препарати', 'препаратів')}</span>${ic('chev', 'i16')}</div>
       <div class="bs sec">Та сама діюча речовина: ${d.sub}${cheaper.length ? `. Є дешевші, від ${money(Math.min(...cheaper))}` : ''}</div></button>` : ''}
-    <div class="aibox">
-      <div class="row ai" style="font:600 16px/24px Inter">${ic('sparkle', 'i16')} Запитати ШІ про інструкцію</div>
-      <div class="bs sec">Відповідь із посиланням на розділ інструкції. Це не медична порада.</div>
+    <div class="aibox" data-act="ai-open:${d.id}" role="button" tabindex="0">
+      <div class="row between"><div class="row ai" style="font:600 16px/24px Inter">${ic('sparkle', 'i16')} Запитати ШІ про інструкцію</div>${ic('chev', 'i16')}</div>
+      <div class="bs sec">Готові питання нижче, або торкніться рамки, щоб запитати своє в ШІ-помічнику. Це не медична порада.</div>
       <div class="chips">${AI_QA.map((x, i) => `<button class="chip aic ${a.i === i && !a.err ? 'on' : ''}" data-act="ai:${i}">${x.q}</button>`).join('')}</div>
       ${ans}
+      <button class="btn text" data-act="ai-open:${d.id}" style="align-self:flex-start;padding:4px 0">Запитати інше у ШІ-помічника</button>
     </div>
     <div class="card" style="gap:4px"><div class="bss">Склад і застосування</div>
       <div class="bs sec">Діюча речовина: ${d.sub}</div>
@@ -444,7 +445,8 @@ reminders() {
 ai() {
   const msgs = S.aiChat.length ? S.aiChat : [{ who: 'bot', t: 'Вітаю! Я ШІ-помічник Tabletki. Можу пояснити інструкцію простими словами, підказати, як приймати ліки, і перевірити, чи поєднуються препарати з вашої аптечки. Це не медична порада.' }];
   const kitNames = S.kit.map(k => drugById(k.id).name.split(' ')[0]);
-  return { bottom: 'single', html: `${sb()}${tbBack('ШІ-помічник')}
+  const deep = S.stack.length > 1;
+  return { bottom: deep ? 'single' : 'aitab', tab: 'ai', html: `${sb()}${deep ? tbBack('ШІ-помічник') : tbLarge('ШІ-помічник')}
   <div class="content" id="chat" style="gap:8px">
     ${msgs.map(m => `<div class="bubble ${m.who === 'me' ? 'me' : 'bot'}">${m.t}</div>`).join('')}
     ${S.aiBusy ? `<div class="bubble bot row sec">${ic('loader', 'i16 spin')} Шукаю в інструкціях…</div>` : ''}
@@ -455,9 +457,9 @@ ai() {
     </div>`}
   </div>
   <div class="actionbar"><div class="row" style="gap:8px">
-    <label class="field grow"><input id="aiq" type="text" autocomplete="off" enterkeyhint="send" placeholder="Напишіть запитання" aria-label="Запитання до помічника"></label>
+    <label class="field grow"><input id="aiq" type="text" autocomplete="off" enterkeyhint="send" placeholder="Напишіть запитання" aria-label="Запитання до помічника" value="${esc(S.aiSeed ? S.aiSeed + ' ' : '')}"></label>
     <button class="btn aiBtn" data-act="aisend" style="width:48px;padding:0" aria-label="Надіслати">${ic('chev')}</button>
-  </div></div>` };
+  </div></div>${deep ? '' : tabbar('ai')}` };
 },
 
 profile() {
@@ -760,6 +762,7 @@ function afterMount(el) {
     nm.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ACT['hello-go'](); } });
   }
   const aq = el.querySelector('#aiq');
+  if (aq && S.focusAi) { setTimeout(() => { aq.focus({ preventScroll: true }); aq.setSelectionRange(aq.value.length, aq.value.length); }, 80); S.focusAi = false; S.aiSeed = ''; }
   if (aq) aq.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ACT.aisend(); } });
   const chat = el.querySelector('#chat');
   if (chat) chat.scrollTop = chat.scrollHeight;
@@ -810,7 +813,7 @@ function setPhoneErr(on) {
 const toastEl = document.getElementById('toast');
 let toastTimer, toastAct = null;
 function showToast(text, o = {}) {
-  const off = { tab: 92, single: 100, double: 152, none: 16 }[bottomKind] || 92;
+  const off = { tab: 92, single: 100, double: 152, aitab: 168, none: 16 }[bottomKind] || 92;
   toastEl.style.bottom = off + 'px';
   toastEl.innerHTML = `<span style="color:var(--primary-100)">${ic(o.icon || 'check', 'i16')}</span><span class="bs grow">${text}</span>${o.action ? `<button class="ta" data-act="toast">${o.action}</button>` : ''}`;
   toastAct = o.onAction || null; toastEl.classList.add('show');
@@ -848,6 +851,11 @@ const ACT = {
     S.onboarded = true; S.stack = [{ s: 'home' }]; mount('fwd');
   },
   'hello-skip': () => { S.profile.name = ''; S.onboarded = true; S.stack = [{ s: 'home' }]; mount('fwd'); },
+  'ai-open': (id) => {
+    const d = drugById(id);
+    S.aiSeed = d ? d.name : '';
+    S.stack = [{ s: 'ai' }]; S.tab = 'ai'; S.focusAi = true; mount('fwd');
+  },
   'open-search': () => { S.q = ''; S.focusSearch = true; go('search'); },
   clear: () => { S.q = ''; const q = document.getElementById('q'); if (q) { q.value = ''; q.focus(); } updateResults(false); },
   setq: (v) => { S.q = v; const q = document.getElementById('q'); if (q) q.value = v; updateResults(true); },

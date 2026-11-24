@@ -62,9 +62,10 @@ input{font:inherit}
 .i{width:24px;height:24px;flex:none}.i16{width:16px;height:16px}.i14{width:14px;height:14px}.i20{width:20px;height:20px}.i32{width:32px;height:32px}
 
 /* таб-бар */
-.tabbar{flex:none;display:grid;grid-template-columns:repeat(4,1fr);background:var(--n0);border-top:1px solid var(--n200);padding:var(--s2) var(--s1) var(--s3)}
-.tab{display:flex;flex-direction:column;align-items:center;gap:var(--s1);color:var(--n500);border-radius:var(--r-md)}
-.tab .pill{width:56px;height:32px;border-radius:var(--r-full);display:grid;place-items:center;transition:background var(--t-fast)}
+.tabbar{flex:none;display:grid;grid-template-columns:repeat(5,1fr);background:var(--n0);border-top:1px solid var(--n200);padding:var(--s2) var(--s1) var(--s3)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:var(--s1);color:var(--n500);border-radius:var(--r-md);min-width:0;padding:0 2px}
+.tab .cap{font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.tab .pill{width:100%;max-width:56px;height:32px;border-radius:var(--r-full);display:grid;place-items:center;transition:background var(--t-fast)}
 .tab.on{color:var(--primary-700)}.tab.on .pill{background:var(--primary-100)}.tab.on .cap{font-weight:600}
 .tab .i{color:var(--n900)}.tab.on .i{color:var(--primary-700)}
 
@@ -153,7 +154,8 @@ input{font:inherit}
 .tile .ic{width:40px;height:40px;border-radius:var(--r-md);background:var(--primary-50);color:var(--primary-700);display:grid;place-items:center}
 
 /* ШІ */
-.aibox{background:var(--sec-100);border-radius:var(--r-lg);padding:var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
+.aibox{background:var(--sec-100);border-radius:var(--r-lg);padding:var(--s4);display:flex;flex-direction:column;gap:var(--s3);cursor:pointer;text-align:left;border:1px solid transparent}
+.aibox:active{border-color:var(--sec-300,var(--n300))}
 .ai-ans{background:var(--n0);border-radius:var(--r-md);padding:var(--s3);display:flex;flex-direction:column;gap:var(--s1);animation:fade var(--t-fast) ease-out}
 .bubble{max-width:85%;padding:var(--s3);border-radius:var(--r-lg);font:400 15px/22px Inter}
 .bubble.me{align-self:flex-end;background:var(--primary-600);color:#fff;border-bottom-right-radius:var(--s1)}
